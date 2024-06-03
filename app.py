@@ -89,8 +89,6 @@ if "survey_index" not in st.session_state:
     st.session_state.survey_index = 0
 if "conversation_log" not in st.session_state:
     st.session_state.conversation_log = []
-if "evaluation_done" not in st.session_state:
-    st.session_state.evaluation_done = False
 
 # runner 
 for message in st.session_state.messages:
@@ -116,14 +114,14 @@ def handle_conversation():
     if st.session_state.survey_index < len(survey_questions):
         current_question = survey_questions[st.session_state.survey_index]
     else:
-        prompt = st.chat_input("Enter a prompt here", key="end_prompt")
+        prompt = st.chat_input("Enter a prompt here")
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
         context = {
-            "question": prompt,
-            "current_question": "",
+            "question":prompt,
+            "current_question":"",
         }
         
         response = chain_with_history.invoke(context, config={"configurable": {"session_id": "any"}})
@@ -137,17 +135,16 @@ def handle_conversation():
         st.markdown("**모든 설문이 완료되었습니다. 감사합니다.**")
 
         save_conversation()
-        eval_chain_action()
-        return
+        return eval_chain_action()
 
-    if prompt := st.chat_input("Enter a prompt here", key=f"prompt_{st.session_state.survey_index}"):
+    if prompt := st.chat_input("Enter a prompt here"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
         
         # Prepare the context for the current survey question
         context = {
-            "question": prompt,
+            "question":prompt,
             "current_question": current_question,
         }
         
@@ -174,44 +171,40 @@ def save_conversation():
             json.dump(st.session_state.conversation_log, f, ensure_ascii=False, indent=4)
 
 def eval_chain_action():
-    if st.session_state.conversation_log and not st.session_state.evaluation_done:
-        if os.path.exists("conversation_log.json"):
-            with open("conversation_log.json", "r", encoding="utf-8") as file:
-                data = json.load(file)
+    if os.path.exists("conversation_log.json"):
+        with open("conversation_log.json", "r", encoding="utf-8") as file:
+            data = json.load(file)
 
-            evaluation_prompt_template = ChatPromptTemplate.from_messages(
-            [
-                ("system", "당신은 정신건강 평가를 돕는 AI입니다. 사용자의 응답을 0점부터 4점까지의 스케일로 평가해주세요. 여기서 0점은 매우 긍정적인 점수, 4점은 매우 부정적인 점수입니다. 또한, 각 항목에 대한 평가는 질문지에 대해서 '우울증'척도로 계산 했을 때 기준입니다."),
-                ("human", "AI의 질문: {context}\n 사용자의 응답: {response}\n")
-            ])
+        evaluation_prompt_template = ChatPromptTemplate.from_messages(
+        [
+            ("system", "당신은 정신건강 평가를 돕는 AI입니다. 사용자의 응답을 0점부터 4점까지의 스케일로 평가해주세요. 여기서 0점은 매우 긍정적인 점수, 4점은 매우 부정적인 점수입니다. 또한, 각 항목에 대한 평가는 질문지에 대해서 '우울증'척도로 계산 했을 때 기준입니다."),
+            ("human", "AI의 질문: {context}\n 사용자의 응답: {response}\n")
+        ])
 
-            eval_chain = evaluation_prompt_template | model
-            eval_response_list = []
-            for log in transform_json(data):
-                eval_context = {
-                    "context": f"Survey_question: {log['context']['current_question']}, Generated_question: {log['context']['question']}",
-                    "response": log["response"]
-                }
-                eval_response = st.write_stream(eval_chain.stream(eval_context, config={"configurable": {"session_id": "any"}}))
-                eval_response_list.append(eval_response)
-            
-            score_chain = model.invoke(f"""이것은 우울증 검진에 따른 평가입니다.
-                                        이 평가 자료의 점수를 보고, 총점이 몇점인지 계산하시오. 그리고 기준에 따라서 답변을 생성하시오. 
-                                        <평가 자료>
-                                        {eval_response_list}
-                                        </평가 자료>
-                                        <기준>
-                                        0~4점 / 심각도 None / 정상 범위
-                                        5~9점 / 심각도 mild / 경과 관찰
-                                        10~14점 / 심각도 Moderate / 치료 고려, 경과 관찰
-                                        15~19점 / 심각도 Moderately Severe / 치료 요함(약물, 상담)
-                                        20~27점 / 심각도 Severe / 적극적인 치료, 정신과 진료 필요.
-                                        </기준>
-                                    """)
-
-            st.markdown(score_chain.content)
-            # status flag
-            st.session_state.evaluation_done = True
+        eval_chain = evaluation_prompt_template | model
+        eval_response_list = []
+        for log in transform_json(data):
+            eval_context = {
+                "context": f"Survey_question: {log['context']['current_question']}, Generated_question: {log['context']['question']}",
+                "response": log["response"]
+            }
+            eval_response = st.write_stream(eval_chain.stream(eval_context, config={"configurable": {"session_id": "any"}}))
+            eval_response_list.append(eval_response)
+        
+        st.markdown(model.invoke(f"""이것은 우울증 검진에 따른 평가입니다.
+                                    이 평가 자료의 점수를 보고, 총점이 몇점인지 계산하시오. 그리고 기준에 따라서 답변을 생성하시오. 
+                                    <평가 자료>
+                                    {eval_response_list}
+                                    </평가 자료>
+                                    <기준>
+                                    0~4점 / 심각도 None / 정상 범위
+                                    5~9점 / 심각도 mild / 경과 관찰
+                                    10~14점 / 심각도 Moderate / 치료 고려, 경과 관찰
+                                    15~19점 / 심각도 Moderately Severe / 치료 요함(약물, 상담)
+                                    20~27점 / 심각도 Severe / 적극적인 치료, 정신과 진료 필요.
+                                    </기준>
+                                """).content)
+    else: return
 
 # main
 handle_conversation()
@@ -221,7 +214,6 @@ def reset_conversation():
     st.session_state.messages = []
     st.session_state.survey_index = 0
     st.session_state.conversation_log = []
-    st.session_state.evaluation_done = False
     st.session_state.clear()
 
 with st.sidebar:
