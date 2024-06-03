@@ -6,6 +6,7 @@ from langchain_community.chat_message_histories import StreamlitChatMessageHisto
 from util import get_random_topic, transform_json
 import json
 import os
+from datetime import datetime
 
 st.set_page_config(page_title="상담봇", page_icon=":tada:", layout="wide")
 st.title("PHQ-9 기반 우울증 상담-진단 BETA")
@@ -192,20 +193,19 @@ def eval_chain_action():
             eval_response_list.append(eval_response)
         
         st.markdown(model.invoke(f"""이것은 우울증 검진에 따른 평가입니다.
-                                    이 평가 자료의 점수를 보고, 총점이 몇점인지 계산하시오. 그리고 기준에 따라서 답변을 생성하시오. 
-                                    <평가 자료>
-                                    {eval_response_list}
-                                    </평가 자료>
-                                    <기준>
-                                    0~4점 / 심각도 None / 정상 범위
-                                    5~9점 / 심각도 mild / 경과 관찰
-                                    10~14점 / 심각도 Moderate / 치료 고려, 경과 관찰
-                                    15~19점 / 심각도 Moderately Severe / 치료 요함(약물, 상담)
-                                    20~27점 / 심각도 Severe / 적극적인 치료, 정신과 진료 필요.
-                                    </기준>
+        이 평가 자료의 점수를 보고, 총점이 몇점인지 계산하시오. 그리고 기준에 따라서 답변을 생성하시오. 
+        <평가 자료>
+        {eval_response_list}
+        </평가 자료>
+        <기준>
+        0~4점 / 심각도 None / 정상 범위
+        5~9점 / 심각도 mild / 경과 관찰
+        10~14점 / 심각도 Moderate / 치료 고려, 경과 관찰
+        15~19점 / 심각도 Moderately Severe / 치료 요함(약물, 상담)
+        20~27점 / 심각도 Severe / 적극적인 치료, 정신과 진료 필요.
+        </기준>
                                 """).content)
-    else: return
-
+        os.rename("conversation_log.json", f"conversation_log_{datetime.now().strftime('%H_%M_%S')}.json")
 # main
 handle_conversation()
 
